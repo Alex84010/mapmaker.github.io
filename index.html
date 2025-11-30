@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Convertisseur d'images → 64×64 palette Brawl</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{max-width:900px;margin:24px auto;padding:0 18px;color:#111}
+    h1{font-size:20px;margin-bottom:6px}
+    p.lead{margin-top:0;color:#444}
+    .controls{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+    button,input[type=file]{padding:8px 12px;border-radius:8px;border:1px solid #ccc;background:#f7f7f7}
+    button:hover{cursor:pointer}
+    .preview-row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+    .panel{background:#fff;border:1px solid #eee;padding:12px;border-radius:10px;box-shadow:0 4px 18px rgba(12,12,12,0.04)}
+    .canvas-wrap{display:flex;flex-direction:column;gap:8px;align-items:center}
+    canvas{display:block;background:#ddd}
+    .big-preview{width:512px;height:512px;image-rendering:pixelated;border-radius:6px}
+    .small-preview{width:160px;height:160px;image-rendering:pixelated;border-radius:6px}
+    .info{font-size:13px;color:#555}
+    label.inline{display:inline-flex;gap:8px;align-items:center}
+    .palette{display:flex;gap:6px;margin-top:8px}
+    .swatch{width:28px;height:28px;border-radius:6px;border:1px solid rgba(0,0,0,0.08)}
+    footer{margin-top:18px;color:#666;font-size:13px}
+    textarea{width:100%;height:140px}
+  </style>
+</head>
+<body>
+  <h1>Convertisseur image → 64×64 (palette 7 couleurs)</h1>
+  <p class="lead">Téléverse une image, elle sera recadrée en carré (si besoin), redimensionnée en <strong>64×64</strong> puis réduite à la palette : noir, rouge, vert foncé, vert clair, jaune, bleu, marron.</p>
+
+  <div class="controls">
+    <input id="file" type="file" accept="image/*">
+    <button id="process">Convertir</button>
+    <button id="download" disabled>Télécharger PNG</button>
+    <button id="export-json" disabled>Exporter JSON (grid)</button>
+    <label class="inline"><input id="auto-process" type="checkbox" checked> traitement auto à l'upload</label>
+  </div>
+
+  <div class="preview-row">
+    <div class="panel canvas-wrap">
+      <div class="info">Prévisualisation 512× (pixelée)</div>
+      <canvas id="preview" class="big-preview" width="64" height="64"></canvas>
+      <div class="palette" id="palette"></div>
+    </div>
+
+    <div class="panel canvas-wrap">
+      <div class="info">Mini aperçu 160×</div>
+      <canvas id="preview-small" class="small-preview" width="64" height="64"></canvas>
+      <div class="info">Image source (centrée & redimensionnée puis quantifiée)</div>
+    </div>
+  </div>
+
+  <h3>Export JSON</h3>
+  <p class="info">Le bouton <strong>Exporter JSON</strong> génère une grille 64×64 sous forme d'un tableau d'indices vers la palette (utile pour créer une map). Vous pouvez copier-coller le JSON.</p>
+  <textarea id="json-output" readonly placeholder="Export JSON apparaîtra ici..."></textarea>
+
+  <footer>Besoin que les couleurs correspondent à des tuiles Brawl (terrain, eau, herbe...) ? Je peux ajouter un mapping et un export CSV/CSV+meta pour l'import dans l'éditeur.</footer>
+
+  <!-- hidden canvases for processing -->
+  <canvas id="hidden" width="64" height="64" style="display:none"></canvas>
+
+  <script>
+    // Palette (hex + name) — correspond aux couleurs demandées
+    const PALETTE = [
+      {name: 'noir', hex: '#000000'},
+      {name: 'rouge', hex: '#ff0000'},
+      {name: 'vert-fonce', hex: '#006400'}, // darkgreen
+      {name: 'vert-clair', hex: '#00ff00'},
+      {name: 'jaune', hex: '#ffff00'},
+      {name: 'bleu', hex: '#0000ff'},
+      {name: 'marron', hex: '#8b4513'}
+    ];
+
+    // utilities
+    function hexToRgb(hex){
+      const m = hex.replace('#','');
+      return [parseInt(m.substring(0,2),16),parseInt(m.substring(2,4),16),parseInt(m.substring(4,6),16)];
+    }
+    function distanceSq(a,b){ return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2 }
+
+    // precompute palette RGB
+    const paletteRGB = PALETTE.map(p => ({...p, rgb: hexToRgb(p.hex)}));
+
+    // DOM
+    const fileInput = document.getElementById('file');
+    const processBtn = document.getElementById('process');
+    const downloadBtn = document.getElementById('download');
+    const exportBtn = document.getElementById('export-json');
+    const autoCheckbox = document.getElementById('auto-process');
+    const preview = document.getElementById('preview');
+    const previewSmall = document.getElementById('preview-small');
+    const hidden = document.getElementById('hidden');
+    const jsonOutput = document.getElementById('json-output');
+    const paletteDiv = document.getElementById('palette');
+
+    // fill palette swatches
+    paletteRGB.forEach(p => {
+      const d = document.createElement('div');
+      d.className = 'swatch'; d.title = p.name; d.style.background = p.hex;
+      paletteDiv.appendChild(d);
+    });
+
+    let lastImage = null; // Image object
+    let lastGrid = null; // 64x64 array of palette indices
+
+    fileInput.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      img.onload = () => { lastImage = img; if(autoCheckbox.checked) doProcess(); };
+      img.src = url;
+    });
+
+    processBtn.addEventListener('click', doProcess);
+    downloadBtn.addEventListener('click', downloadPNG);
+    exportBtn.addEventListener('click', exportJSON);
+
+    function doProcess(){
+      if(!lastImage) { alert('Aucune image chargée.'); return; }
+      // 1) crop to center square
+      const img = lastImage;
+      const w = img.width, h = img.height;
+      const side = Math.min(w,h);
+      const sx = Math.floor((w - side)/2);
+      const sy = Math.floor((h - side)/2);
+
+      // draw cropped -> hidden canvas with nearest-neighbor (disable smoothing)
+      const ctxHidden = hidden.getContext('2d');
+      hidden.width = 64; hidden.height = 64;
+      ctxHidden.imageSmoothingEnabled = false;
+      // drawImage(source, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+      ctxHidden.drawImage(img, sx, sy, side, side, 0, 0, 64, 64);
+
+      // get image data
+      const imgData = ctxHidden.getImageData(0,0,64,64);
+      const data = imgData.data;
+
+      // map each pixel to nearest palette color
+      const grid = new Array(64);
+      for(let y=0;y<64;y++){
+        grid[y]=new Array(64);
+        for(let x=0;x<64;x++){
+          const i = (y*64 + x)*4;
+          const px = [data[i], data[i+1], data[i+2]];
+          // find nearest
+          let bestIdx = 0, bestDist = Infinity;
+          for(let k=0;k<paletteRGB.length;k++){
+            const d2 = distanceSq(px, paletteRGB[k].rgb);
+            if(d2 < bestDist){ bestDist = d2; bestIdx = k; }
+          }
+          // write back the palette color
+          const col = paletteRGB[bestIdx].rgb;
+          data[i]=col[0]; data[i+1]=col[1]; data[i+2]=col[2];
+          grid[y][x]=bestIdx;
+        }
+      }
+      // put back quantized image
+      ctxHidden.putImageData(imgData,0,0);
+
+      // draw to previews (they have width/height = 64 but CSS scales up)
+      const ctxBig = preview.getContext('2d');
+      const ctxSmall = previewSmall.getContext('2d');
+      [ctxBig, ctxSmall].forEach(c=>{ c.imageSmoothingEnabled = false; });
+      ctxBig.clearRect(0,0,64,64); ctxBig.drawImage(hidden,0,0);
+      ctxSmall.clearRect(0,0,64,64); ctxSmall.drawImage(hidden,0,0);
+
+      // enable download/export
+      downloadBtn.disabled = false; exportBtn.disabled = false;
+      // store grid
+      lastGrid = grid;
+      // JSON output
+      jsonOutput.value = JSON.stringify({palette: PALETTE.map(p=>p.name), grid: grid}, null, 2);
+    }
+
+    function downloadPNG(){
+      // create a full-res PNG from hidden canvas
+      const a = document.createElement('a');
+      a.href = hidden.toDataURL('image/png');
+      a.download = 'map_64x64.png';
+      a.click();
+    }
+
+    function exportJSON(){
+      if(!lastGrid){ alert('Pas d\'image traitée.'); return; }
+      const payload = {palette: PALETTE.map(p=>p.name), grid: lastGrid};
+      const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'map_64x64.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // accessibility: allow Enter on process
+    fileInput.addEventListener('keydown', e=>{ if(e.key==='Enter') doProcess(); });
+
+    // initial: draw blank
+    (function initBlank(){
+      const ctx = preview.getContext('2d'); ctx.fillStyle='#ddd'; ctx.fillRect(0,0,64,64);
+      const ctx2 = previewSmall.getContext('2d'); ctx2.fillStyle='#ddd'; ctx2.fillRect(0,0,64,64);
+    })();
+
+  </script>
+</body>
+</html>
