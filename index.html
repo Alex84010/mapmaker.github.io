@@ -1,255 +1,126 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Convertisseur → Grid CSS 64×64</title>
+<meta charset="utf-8">
+<title>Convertisseur 64×64 → Blocs CSS</title>
 <style>
-  :root{
-    --cell-size: 8px; /* taille d'une tuile affichée (change pour zoom) */
+  :root { --size: 8px; }
+
+  body {
+    font-family: Arial;
+    padding: 20px;
   }
-  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:18px;color:#111}
-  h1{font-size:18px;margin:0 0 6px}
-  .controls{display:flex;gap:8px;align-items:center;margin:8px 0 14px;flex-wrap:wrap}
-  input[type=file], button, label{padding:8px 10px;border-radius:8px;border:1px solid #ddd;background:#f7f7f7}
-  button:disabled{opacity:.5}
-  .wrap{display:flex;gap:18px;align-items:flex-start}
-  .panel{background:#fff;border:1px solid #eee;padding:12px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.04)}
-  .preview{
-    width: calc(var(--cell-size) * 64);
-    height: calc(var(--cell-size) * 64);
-    display:grid;
-    grid-template-columns: repeat(64, var(--cell-size));
-    grid-template-rows: repeat(64, var(--cell-size));
+
+  #preview {
+    width: calc(var(--size) * 64);
+    height: calc(var(--size) * 64);
+    display: grid;
+    grid-template-columns: repeat(64, var(--size));
+    grid-template-rows: repeat(64, var(--size));
+    border: 1px solid #ccc;
     image-rendering: pixelated;
-    overflow:hidden;
-    border-radius:6px;
-  }
-  .tile{
-    width:var(--cell-size);
-    height:var(--cell-size);
-    box-sizing:border-box;
   }
 
-  /* --- Styles visuels pour chaque type de tuile (exemples) --- */
-  /* Les classes sont .tile-<symbole> (symbole = single char like R,C,K...) */
+  .tile {
+    width: var(--size);
+    height: var(--size);
+  }
 
-  .tile-R { background: linear-gradient(#d46b4a,#b34f36); border: 1px solid rgba(0,0,0,0.06); border-radius:2px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); } /* bloc rouge */
-  .tile-C { background: linear-gradient(#e0c196,#caa768); border:1px solid rgba(0,0,0,0.06); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); } /* caisse */
-  .tile-K { background: radial-gradient(circle at 30% 30%, #7dff7d, #3ca63c); border-radius:50%; } /* cactus (rond) */
-  .tile-W { background: linear-gradient(#f6f6f6,#dcdcdc); border-radius:4px; } /* roche blanche */
-  .tile-P { background: linear-gradient(#b88b5c,#8f5f36); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); } /* poteau */
-  .tile-B { background: linear-gradient(#ffd66e,#f1b93a); border-radius:4px; } /* buisson jaune */
-  .tile-O { background: linear-gradient(#d29a5e,#b47a4b); border-radius:4px; } /* baril */
-  .tile-S { background: linear-gradient(#bff7c7,#78d88f); border-radius:6px; opacity:0.95; } /* slime verte */
-  .tile-V { background: linear-gradient(#b29bd5,#6e53b0); } /* tuile violette */
-  .tile-T { background: linear-gradient(#f08c84,#b54b45); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.03); } /* tuile rouge quadrillée */
-  .tile-G { background: linear-gradient(#66b266,#1f7d1f); } /* tuile verte quadrillée */
-  .tile-X { background: repeating-linear-gradient(45deg, #666 0 2px, #222 2px 6px); } /* spikes - pattern */
-  .tile-? { background: #ccc; } /* fallback */
-
-  /* small UI extras */
-  .info{font-size:13px;color:#555;margin-top:8px}
-  textarea{width:100%;height:140px;margin-top:10px}
-  .controls-right{display:flex;gap:8px;flex-direction:column}
-  .zoom{display:flex;gap:8px;align-items:center}
-  .legend{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-  .legend .item{display:flex;gap:6px;align-items:center;font-size:13px}
-  .sw{width:18px;height:18px;border-radius:4px;border:1px solid rgba(0,0,0,0.06)} 
+  /* 7 couleurs simples */
+  .tile-black { background: #000; }
+  .tile-red { background: #ff0000; }
+  .tile-dgreen { background: #005000; }
+  .tile-lgreen { background: #00ff00; }
+  .tile-yellow { background: #ffff00; }
+  .tile-blue { background: #0000ff; }
+  .tile-brown { background: #7a4a00; }
 </style>
 </head>
 <body>
-  <h1>Convertisseur → Grid CSS 64×64</h1>
-  <p class="info">Upload une image, elle sera recadrée et réduite à 64×64. Chaque pixel est converti en une tuile CSS (tu peux modifier les classes ci-dessus).</p>
 
-  <div class="controls">
-    <input id="file" type="file" accept="image/*">
-    <button id="process">Convertir</button>
-    <button id="export-json" disabled>Exporter JSON</button>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <label>Zoom</label>
-      <input id="zoom" type="range" min="4" max="12" value="8">
-    </div>
-  </div>
+<h2>Générateur 64×64 → Blocs CSS</h2>
 
-  <div class="wrap">
-    <div class="panel">
-      <div id="preview" class="preview" aria-hidden="false"></div>
-      <div class="info">Aperçu CSS - chaque pixel est un block HTML.</div>
-    </div>
+<input type="file" id="file" accept="image/*">
+<button id="download" disabled>Télécharger image 64×64</button>
 
-    <div class="panel" style="min-width:240px;">
-      <div class="info"><strong>Légende</strong></div>
-      <div class="legend" id="legend"></div>
-      <textarea id="json-out" readonly placeholder="JSON export (grid)"></textarea>
-    </div>
-  </div>
+<canvas id="canvas" width="64" height="64" style="display:none"></canvas>
 
-  <!-- hidden canvas pour traitement -->
-  <canvas id="hidden" width="64" height="64" style="display:none"></canvas>
+<h3>Aperçu :</h3>
+<div id="preview"></div>
 
 <script>
-/* ---- Définition des tuiles (symbole -> nom) et couleur dominante prototype ----
-   Change les symboles et couleurs si tu veux ajuster le mapping.
-*/
-const TILE_MAP = {
-  "R": "bloc_rouge",
-  "C": "caisse",
-  "K": "cactus",
-  "W": "roche_blanche",
-  "P": "poteau",
-  "B": "buisson_jaune",
-  "O": "baril",
-  "S": "slime_verte",
-  "V": "tuile_violette",
-  "T": "tuile_rouge",
-  "G": "tuile_verte",
-  "X": "spikes"
-};
+const fileInput = document.getElementById("file");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+const preview = document.getElementById("preview");
+const dlBtn = document.getElementById("download");
 
-// couleurs prototypes pour comparaison (R,G,B)
-const TILE_COLORS = {
-  "R": [160,80,60],
-  "C": [210,170,110],
-  "K": [70,150,70],
-  "W": [235,235,235],
-  "P": [150,100,60],
-  "B": [245,200,60],
-  "O": [160,120,60],
-  "S": [120,230,140],
-  "V": [120,90,170],
-  "T": [200,80,70],
-  "G": [50,140,50],
-  "X": [90,90,110]
-};
+const palette = [
+  { rgb: [0,0,0], cls: "tile-black" },
+  { rgb: [255,0,0], cls: "tile-red" },
+  { rgb: [0,80,0], cls: "tile-dgreen" },
+  { rgb: [0,255,0], cls: "tile-lgreen" },
+  { rgb: [255,255,0], cls: "tile-yellow" },
+  { rgb: [0,0,255], cls: "tile-blue" },
+  { rgb: [122,74,0], cls: "tile-brown" }
+];
 
-const fileInput = document.getElementById('file');
-const procBtn = document.getElementById('process');
-const preview = document.getElementById('preview');
-const hidden = document.getElementById('hidden');
-const exportBtn = document.getElementById('export-json');
-const jsonOut = document.getElementById('json-out');
-const zoom = document.getElementById('zoom');
-const legend = document.getElementById('legend');
-
-let lastGrid = null;
-let lastImage = null;
-
-// build legend UI
-function buildLegend(){
-  legend.innerHTML = '';
-  for(const k in TILE_MAP){
-    const div = document.createElement('div');
-    div.className='item';
-    const sw = document.createElement('div');
-    sw.className='sw';
-    sw.style.background = getSampleCss(k);
-    div.appendChild(sw);
-    const label = document.createElement('div');
-    label.textContent = k + ' = ' + TILE_MAP[k];
-    div.appendChild(label);
-    legend.appendChild(div);
-  }
-}
-function getSampleCss(sym){
-  // small best-effort color from TILE_COLORS
-  const c = TILE_COLORS[sym] || [200,200,200];
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
-}
-buildLegend();
-
-// adjust zoom
-zoom.addEventListener('input', e => {
-  document.documentElement.style.setProperty('--cell-size', e.target.value + 'px');
-});
-
-// image loading
-fileInput.addEventListener('change', e => {
-  const f = e.target.files && e.target.files[0];
-  if(!f) return;
-  const url = URL.createObjectURL(f);
-  const img = new Image();
-  img.onload = () => { lastImage = img; /* auto process */ doProcess(); URL.revokeObjectURL(url); };
-  img.src = url;
-});
-
-procBtn.addEventListener('click', doProcess);
-exportBtn.addEventListener('click', exportJSON);
-
-function doProcess(){
-  if(!lastImage){ alert('Charge d'abord une image.'); return; }
-  // crop center to square then resize to 64x64 on hidden canvas
-  const img = lastImage;
-  const w = img.width, h = img.height;
-  const side = Math.min(w,h);
-  const sx = Math.floor((w-side)/2), sy = Math.floor((h-side)/2);
-
-  const ctx = hidden.getContext('2d');
-  hidden.width = 64; hidden.height = 64;
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0,0,64,64);
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, 64, 64);
-
-  const imgData = ctx.getImageData(0,0,64,64).data;
-
-  // build grid of symbols
-  const grid = Array.from({length:64}, ()=>Array(64).fill('?'));
-  for(let y=0;y<64;y++){
-    for(let x=0;x<64;x++){
-      const i = (y*64 + x)*4;
-      const px = [imgData[i], imgData[i+1], imgData[i+2]];
-      grid[y][x] = closestSymbol(px);
+function nearestColor(px){
+  let best = null, bestDist = Infinity;
+  for(const p of palette){
+    let d = (px[0]-p.rgb[0])**2 + (px[1]-p.rgb[1])**2 + (px[2]-p.rgb[2])**2;
+    if(d < bestDist){
+      bestDist = d;
+      best = p.cls;
     }
-  }
-
-  lastGrid = grid;
-  renderGrid(grid);
-  jsonOut.value = JSON.stringify({palette:Object.values(TILE_MAP), symbols:Object.keys(TILE_MAP), grid}, null, 2);
-  exportBtn.disabled = false;
-}
-
-// choose closest symbol by Euclidean distance in RGB space
-function closestSymbol(px){
-  let best = '?', bestD = Infinity;
-  for(const k in TILE_COLORS){
-    const c = TILE_COLORS[k];
-    const d = (px[0]-c[0])**2 + (px[1]-c[1])**2 + (px[2]-c[2])**2;
-    if(d < bestD){ bestD = d; best = k; }
   }
   return best;
 }
 
-// render the 64x64 grid as divs with CSS classes
-function renderGrid(grid){
-  // clear
-  preview.innerHTML = '';
-  // create fragment for perf
-  const frag = document.createDocumentFragment();
-  for(let y=0;y<64;y++){
-    for(let x=0;x<64;x++){
-      const sym = grid[y][x] || '?';
-      const d = document.createElement('div');
-      d.className = 'tile tile-' + sym;
-      d.title = sym + ' : ' + (TILE_MAP[sym]||'unknown');
-      frag.appendChild(d);
+fileInput.addEventListener("change", e => {
+  const file = e.target.files[0];
+  if(!file) return;
+
+  const img = new Image();
+  img.onload = () => {
+    // crop carré centré
+    let side = Math.min(img.width, img.height);
+    let sx = (img.width - side) / 2;
+    let sy = (img.height - side) / 2;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, 64, 64);
+
+    render();
+    dlBtn.disabled = false;
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+function render(){
+  preview.innerHTML = "";
+  const data = ctx.getImageData(0,0,64,64).data;
+
+  for(let y=0; y<64; y++){
+    for(let x=0; x<64; x++){
+      const i = (y*64+x)*4;
+      const px = [data[i], data[i+1], data[i+2]];
+
+      const div = document.createElement("div");
+      div.className = "tile " + nearestColor(px);
+      preview.appendChild(div);
     }
   }
-  preview.appendChild(frag);
 }
 
-function exportJSON(){
-  if(!lastGrid) { alert('Aucune grille à exporter.'); return; }
-  const payload = {palette:TILE_MAP, grid:lastGrid};
-  const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'map_64x64_tiles.json'; a.click();
-  URL.revokeObjectURL(url);
-}
-
-// initial set CSS var
-document.documentElement.style.setProperty('--cell-size', zoom.value + 'px');
-
+dlBtn.addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.download = "image_64x64.png";
+  a.href = canvas.toDataURL("image/png");
+  a.click();
+});
 </script>
+
 </body>
 </html>
